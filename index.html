@@ -1,0 +1,2069 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FiberGuard ICS 2.0 - 광선로 긴급 단선장애 현장 지휘통제 시스템</title>
+
+  <!-- Leaflet 지도 라이브러리 -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Pretendard 고해상도 한글 폰트 -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: #151e2e;
+      --bg-panel: #0f172a;
+      --border-color: #27354a;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --purple: #8b5cf6;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, '맑은 고딕', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ============================================================== */
+    /* 1. 상단 총괄 컨트롤타워 헤더 */
+    /* ============================================================== */
+    .header {
+      height: 56px;
+      background: linear-gradient(135deg, #090d16 0%, #172554 100%);
+      border-bottom: 1.5px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 1000;
+      flex-shrink: 0;
+    }
+
+    .brand-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, #ef4444, #991b1b);
+      color: white;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: -0.2px;
+      animation: pulseAlert 2s infinite;
+    }
+
+    @keyframes pulseAlert {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.85; transform: scale(0.98); }
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .incident-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+    }
+
+    .meta-tag {
+      background: #1e293b;
+      border: 1px solid var(--border-color);
+      padding: 4px 9px;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .cable-spec-selector {
+      background: #0f172a;
+      border: 1.5px solid var(--primary);
+      color: #60a5fa;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-top {
+      padding: 6px 12px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+    }
+    .btn-control-tower {
+      background: linear-gradient(135deg, #d97706, #b45309);
+      color: white;
+      box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+    }
+    .btn-req-partner {
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      color: white;
+      box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+    }
+    .btn-mobile-sim {
+      background: #059669;
+      color: white;
+      box-shadow: 0 2px 8px rgba(5, 150, 105, 0.4);
+    }
+    .btn-top:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+    /* 🚨 72C 이상 대형 장애 경보 핫라인 배너 */
+    #infra-alert-banner {
+      display: flex;
+      background: linear-gradient(90deg, #7f1d1d 0%, #991b1b 50%, #450a0a 100%);
+      border-bottom: 2px solid #ef4444;
+      padding: 6px 16px;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      z-index: 999;
+      flex-shrink: 0;
+    }
+
+    /* ============================================================== */
+    /* 2. 메인 3분할 종합 관제 레이아웃 */
+    /* ============================================================== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* 좌측 패널: 25개 SOP 체크리스트 & 10분 트래커 (350px) */
+    .left-panel {
+      width: 350px;
+      background: var(--bg-panel);
+      border-right: 1.5px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .panel-header {
+      padding: 10px 14px;
+      background: #151e2e;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 13px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-scroll-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* SOP 체크리스트 카드 */
+    .sop-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .sop-header {
+      padding: 8px 12px;
+      background: #1e293b;
+      font-size: 12px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    .sop-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+    .sop-badge.done { background: #065f46; color: #6ee7b7; }
+    .sop-badge.ing { background: #92400e; color: #fde68a; }
+    .sop-badge.ready { background: #334155; color: #94a3b8; }
+
+    .sop-list {
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .sop-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 11.5px;
+      color: #cbd5e1;
+      line-height: 1.4;
+      cursor: pointer;
+    }
+    .sop-item input[type="checkbox"] {
+      margin-top: 2px;
+      accent-color: #2563eb;
+      cursor: pointer;
+      width: 14px;
+      height: 14px;
+    }
+    .sop-item.checked span {
+      text-decoration: line-through;
+      color: #64748b;
+    }
+
+    /* 10분 주기 트래커 위젯 */
+    .metric-widget {
+      background: #111c30;
+      border: 1px solid #1e3a8a;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 11.5px;
+    }
+
+    /* 중앙: Leaflet GIS 지도 컨테이너 */
+    .map-container {
+      flex: 1;
+      position: relative;
+      background: #090d16;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 🔍 브이월드 연동 정밀 주소 검색창 패널 */
+    .map-search-panel {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 850;
+      display: flex;
+      flex-direction: column;
+      width: 360px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+    }
+
+    .search-input-box {
+      background: #1e293b;
+      border: 1.5px solid #3b82f6;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      padding: 4px 8px;
+      gap: 6px;
+    }
+
+    .search-input-box input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 4px;
+      font-family: inherit;
+    }
+    .search-input-box input::placeholder {
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .btn-search-action {
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .btn-search-action:hover { background: #1d4ed8; }
+
+    .btn-search-clear {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      font-size: 14px;
+      cursor: pointer;
+      display: none;
+      padding: 0 4px;
+    }
+    .btn-search-clear:hover { color: #ffffff; }
+
+    .search-results-dropdown {
+      display: none;
+      background: #0f172a;
+      border: 1.5px solid #334155;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      max-height: 280px;
+      overflow-y: auto;
+      margin-top: -2px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
+    }
+
+    .candidate-item {
+      padding: 9px 12px;
+      border-bottom: 1px solid #1e293b;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .candidate-item:hover { background: #1e3a8a; }
+    .candidate-item-title {
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .candidate-item-sub {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .candidate-badge {
+      font-size: 9.5px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 800;
+    }
+    .candidate-badge.road { background: #1e3a8a; color: #93c5fd; }
+    .candidate-badge.parcel { background: #7c2d12; color: #fdba74; }
+    .candidate-badge.place { background: #581c87; color: #d8b4fe; }
+
+    /* ============================================================== */
+    /* 🛠️ [index.html에서 이식] 통합 관제 도구상자 (side-tools-bar) */
+    /* (API 관련 버튼 완전 배제: 레이어, 라벨, 맞춤, 거리, 반경, 지우기, 인쇄) */
+    /* ============================================================== */
+    .side-tools-bar {
+      position: absolute; right: 16px; top: 16px; z-index: 1000;
+      background: #ffffff; border-radius: 8px; box-shadow: 0 4px 18px rgba(0,0,0,0.3);
+      border: 1px solid #cbd5e1; display: flex; flex-direction: column; overflow: hidden;
+      align-items: center; transition: box-shadow 0.2s;
+    }
+    .side-tools-bar.custom-pos { right: auto !important; }
+    .side-tools-bar.horizontal { flex-direction: row; }
+
+    .tools-ctrl-bar {
+      display: flex; flex-direction: row; align-items: center; justify-content: space-between;
+      width: 100%; padding: 3px 5px; background: #f1f5f9; border-bottom: 1px solid #cbd5e1;
+      user-select: none; box-sizing: border-box;
+    }
+    .side-tools-bar.horizontal .tools-ctrl-bar {
+      flex-direction: column; width: auto; height: 44px;
+      border-bottom: none; border-right: 1px solid #cbd5e1;
+      padding: 4px 2px; justify-content: center; gap: 3px;
+    }
+
+    .tools-drag-handle {
+      cursor: grab; color: #64748b; font-size: 12px; font-weight: 800;
+      padding: 2px 4px; border-radius: 3px; display: flex; align-items: center; justify-content: center;
+      line-height: 1; user-select: none;
+    }
+    .tools-drag-handle:hover { background: #e2e8f0; color: #0f172a; }
+    .tools-drag-handle:active { cursor: grabbing; background: #cbd5e1; }
+
+    .tools-rotate-btn, .tools-collapse-btn {
+      cursor: pointer; background: white; border: 1px solid #cbd5e1;
+      color: #334155; font-size: 10px; font-weight: 800; border-radius: 3px;
+      padding: 2px 4px; display: flex; align-items: center; justify-content: center;
+      line-height: 1; user-select: none; transition: all 0.15s;
+    }
+    .tools-rotate-btn:hover { background: #f8fafc; border-color: #0284c7; color: #0284c7; transform: scale(1.08); }
+    .tools-collapse-btn:hover { background: #fee2e2; border-color: #ef4444; color: #ef4444; transform: scale(1.08); }
+
+    .tools-expand-trigger { display: none; }
+    .side-tools-bar.collapsed {
+      width: 44px; height: 44px; border-radius: 10px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      border: 2px solid #2563eb; overflow: hidden;
+    }
+    .side-tools-bar.collapsed .tools-ctrl-bar,
+    .side-tools-bar.collapsed .tool-action-btn,
+    .side-tools-bar.collapsed .tool-section-divider {
+      display: none !important;
+    }
+    .side-tools-bar.collapsed .tools-expand-trigger {
+      display: flex !important; width: 100%; height: 100%; border: none; background: #ffffff;
+      flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; gap: 2px; font-size: 9.5px; font-weight: 800; color: #2563eb;
+      user-select: none; transition: all 0.2s;
+    }
+    .side-tools-bar.collapsed .tools-expand-trigger:hover { background: #eff6ff; color: #1d4ed8; }
+
+    .tool-action-btn {
+      width: 44px; height: 44px; background: white; border: none;
+      border-bottom: 1px solid #f1f5f9; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; cursor: pointer;
+      color: #334155; font-size: 9.5px; font-weight: 800; font-family: inherit;
+      transition: all 0.15s; gap: 2px; user-select: none;
+    }
+    .tool-action-btn:last-child { border-bottom: none; }
+    .side-tools-bar.horizontal .tool-action-btn { border-bottom: none; border-right: 1px solid #f1f5f9; }
+    .side-tools-bar.horizontal .tool-action-btn:last-child { border-right: none; }
+    .tool-action-btn:hover { background: #f8fafc; color: #2563eb; }
+    .tool-action-btn.active { background: #2563eb !important; color: white !important; }
+    .tool-action-btn.map-layer-btn.active { background: #059669 !important; color: white !important; font-weight: 800; }
+    .tool-action-btn#btn-edit-mode.active { background: #f59e0b !important; color: #0f172a !important; }
+    .tool-section-divider { width: 100%; height: 1px; background: #e2e8f0; margin: 0; flex-shrink: 0; }
+    .side-tools-bar.horizontal .tool-section-divider { width: 1px; height: 100%; }
+    .tool-action-btn .tool-icon { font-size: 15px; }
+
+    /* ============================================================== */
+    /* 🎯 [index.html에서 이식] 우측 하단 줌 컨트롤 & 내 위치 GPS */
+    /* ============================================================== */
+    .bottom-controls-box {
+      position: absolute; right: 16px; bottom: 44px; z-index: 900;
+      display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+    }
+    .gps-btn {
+      height: 38px; padding: 0 13px; border-radius: 20px; background: #ffffff;
+      border: 1.5px solid #3b82f6; box-shadow: 0 3px 12px rgba(37, 99, 235, 0.25);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      gap: 6px; font-size: 12px; font-weight: 800; color: #1d4ed8;
+      transition: all 0.15s; white-space: nowrap; user-select: none;
+    }
+    .gps-btn:hover {
+      background: #2563eb; color: #ffffff; transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+    }
+    .zoom-btn-group {
+      background: #ffffff; border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+      border: 1px solid #cbd5e1; display: flex; flex-direction: column; overflow: hidden;
+    }
+    .zoom-btn {
+      width: 38px; height: 36px; border: none; background: white;
+      font-size: 18px; font-weight: 800; color: #334155; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+    }
+    .zoom-btn:hover { background: #f1f5f9; color: #0284c7; }
+    .zoom-btn:first-child { border-bottom: 1px solid #f1f5f9; }
+
+    /* 뱃지형 행정구역 라벨 스타일 */
+    .custom-city-label {
+      background: #1d4ed8; color: #ffffff !important; padding: 4px 11px;
+      border-radius: 14px; font-weight: 800; font-size: 12.5px; border: 2px solid #ffffff;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35); white-space: nowrap; user-select: none;
+    }
+    .custom-eupmyeon-label {
+      background: #ffffff !important; color: #1e3a8a !important; padding: 3px 8px;
+      border-radius: 6px; font-weight: 800; font-size: 11.5px; border: 1.5px solid #2563eb;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25); white-space: nowrap; user-select: none;
+    }
+    .custom-dong-label {
+      background: #ffffff !important; color: #1f2937 !important; padding: 2px 6px;
+      border-radius: 5px; font-weight: 700; font-size: 11px; border: 1.2px solid #64748b;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); white-space: nowrap; user-select: none;
+    }
+
+    /* 지도 하단 상태 안내바 */
+    .map-floating-bar {
+      position: absolute; bottom: 14px; left: 14px;
+      background: rgba(15, 23, 42, 0.92); backdrop-filter: blur(8px);
+      border: 1px solid var(--border-color); border-radius: 8px;
+      padding: 7px 14px; z-index: 800; font-size: 12px;
+      display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    }
+
+    /* 우측 패널: A·B지점 듀얼 접속 관제 보드 (380px) */
+    .right-panel {
+      width: 380px;
+      background: var(--bg-panel);
+      border-left: 1.5px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .card-title {
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .light-source-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      margin: 8px 0;
+    }
+    .unit-cell {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 5px;
+      padding: 6px 2px;
+      text-align: center;
+      font-size: 10.5px;
+      font-weight: 700;
+      transition: all 0.15s;
+    }
+    .unit-cell.active-ok {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: #10b981;
+      color: #34d399;
+    }
+    .unit-cell.active-fail {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      color: #f87171;
+    }
+
+    .splice-meter {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      height: 18px;
+      overflow: hidden;
+      position: relative;
+      margin: 6px 0;
+    }
+    .splice-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #10b981);
+      width: 33.3%;
+      transition: width 0.4s ease-out;
+    }
+    .splice-text {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10.5px; font-weight: 800; color: #ffffff;
+    }
+
+    /* ============================================================== */
+    /* 3. 현장 모바일 뷰 스마트폰 시뮬레이터 (Floating Simulator) */
+    /* ============================================================== */
+    #mobile-simulator-modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(4px);
+      z-index: 9999; align-items: center; justify-content: center;
+    }
+    .phone-frame {
+      width: 390px; height: 780px; background: #111827; border: 8px solid #374151;
+      border-radius: 40px; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 0 2px #4b5563;
+      display: flex; flex-direction: column; overflow: hidden; position: relative;
+    }
+    .phone-notch {
+      height: 28px; background: #030712; display: flex; align-items: center;
+      justify-content: space-between; padding: 0 20px; font-size: 11px; font-weight: 700; color: #94a3b8;
+    }
+    .notch-island { width: 90px; height: 14px; background: #111827; border-radius: 10px; }
+    .phone-header {
+      background: #1e293b; padding: 12px 16px; border-bottom: 1px solid #334155;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .phone-body {
+      flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column;
+      gap: 12px; background: #0b1120;
+    }
+    .phone-card {
+      background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .phone-btn {
+      width: 100%; padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 800;
+      cursor: pointer; border: none; display: flex; align-items: center; justify-content: center;
+      gap: 6px; transition: all 0.15s;
+    }
+    .phone-btn-primary { background: #2563eb; color: white; }
+    .phone-btn-success { background: #059669; color: white; }
+    .phone-btn-warning { background: #d97706; color: white; }
+    .phone-btn-danger { background: #dc2626; color: white; }
+    .phone-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+    /* 토스트 알림 */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(100px); background: #1e293b; color: #ffffff;
+      border: 1.5px solid #3b82f6; border-radius: 9px; padding: 10px 20px; font-size: 13px;
+      font-weight: 700; box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 10001; opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); display: flex; align-items: center; gap: 8px;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================== -->
+  <!-- 1. 상단 총괄 컨트롤타워 헤더 -->
+  <!-- ============================================================== -->
+  <header class="header">
+    <div class="brand-box">
+      <span class="brand-badge">SOP 긴급상황실</span>
+      <h1 class="brand-title">
+        <span>FiberGuard ICS 2.0</span>
+        <span style="font-size: 12px; color: #64748b; font-weight: 500;">| 광선로 단선 통합지휘체계</span>
+      </h1>
+    </div>
+
+    <div class="incident-meta">
+      <span class="meta-tag">📞 비상회의방: <b>02-1588-0114 (#9876)</b> <small style="color: #93c5fd;">(참여자 음소거)</small></span>
+      <span id="control-tower-badge" class="meta-tag" style="background: #1e3a8a; border-color: #3b82f6; color: #93c5fd;">👑 컨트롤타워: <b>김선로 차장 선언완료</b></span>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; color: #94a3b8; font-weight: 700;">선로규격:</span>
+        <select id="cable-spec-select" class="cable-spec-selector" onchange="onCableSpecChange(this.value)">
+          <option value="24C">24C 광케이블 (지선)</option>
+          <option value="48C">48C 광케이블 (분기)</option>
+          <option value="72C" selected>🚨 72C 광케이블 (주간선 - 기간망)</option>
+          <option value="144C">🚨 144C 광케이블 (특대형 간선 - 3개팀 배치)</option>
+          <option value="288C">🚨 288C 백본망 광케이블</option>
+        </select>
+      </div>
+      <span id="incident-timer" class="meta-tag" style="color: #f87171; font-family: monospace;">⏱️ 00:32:15 경과</span>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-top btn-control-tower" onclick="declareControlTower()">
+        <span>👑</span> <span>지휘권 선언</span>
+      </button>
+      <button class="btn-top btn-req-partner" onclick="openPartnerModal()">
+        <span>👥</span> <span>협력사 추가출동</span>
+      </button>
+      <button class="btn-top btn-mobile-sim" onclick="openMobileSimulator()">
+        <span>📱</span> <span>현장 모바일 뷰 (실시간)</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 🚨 72C 이상 기간망 비상 선로담당자 핫라인 배너 -->
+  <div id="infra-alert-banner">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 16px;">⚠️</span>
+      <strong style="color: #fecaca; font-size: 12.5px;">[72C 이상 기간망 비상상황] 인프라팀 선로 총괄 담당자에게 즉시 유선 연락 및 상황을 전파해야 합니다!</strong>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="background: rgba(0,0,0,0.3); padding: 3px 8px; border-radius: 5px; color: #ffffff;">
+        선로담당: <b>김선로 차장</b> (010-3456-7890)
+      </div>
+      <button onclick="callInfraManager()" style="background: #ffffff; color: #991b1b; border: none; border-radius: 5px; padding: 4px 10px; font-size: 11px; font-weight: 800; cursor: pointer;">
+        📞 즉시 유선통화
+      </button>
+      <button onclick="sendInfraAlertSms()" style="background: #fee2e2; color: #b91c1c; border: 1px solid #f87171; border-radius: 5px; padding: 4px 10px; font-size: 11px; font-weight: 800; cursor: pointer;">
+        ✉️ 비상SMS 전파
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- 2. 메인 3분할 종합 관제 화면 -->
+  <!-- ============================================================== -->
+  <div class="main-container">
+
+    <!-- [좌측 패널] SOP 4단계 25개 체크리스트 & 10분 트래커 -->
+    <div class="left-panel">
+      <div class="panel-header">
+        <span>📋 현장 SOP 표준 체크리스트</span>
+        <span id="sop-progress-summary" style="font-size: 11px; color: #38bdf8; font-weight: 700;">14 / 25 완료</span>
+      </div>
+
+      <div class="panel-scroll-content">
+        <!-- 10분 주기 VOC 및 타이머 위젯 -->
+        <div class="metric-widget">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <span style="color: #93c5fd; font-weight: 800;">⏱️ 10분 주기 현황 공유</span>
+            <span id="timer-10m" style="color: #fbbf24; font-weight: 700;">다음 공유: 06분 42초 후</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #cbd5e1;">
+            <span>• VOC 불만콜 접수: <b id="voc-count" style="color: #f87171;">14건</b> (+3건)</span>
+            <span>• 협력사 대성광통신: <b style="color: #34d399;">도착완료</b></span>
+          </div>
+        </div>
+
+        <!-- 1단계: 장애전파 및 출동 -->
+        <div class="sop-section">
+          <div class="sop-header">
+            <span>1. 장애전파 및 출동 (초동)</span>
+            <span class="sop-badge done">완료</span>
+          </div>
+          <div class="sop-list">
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>회의방 개설 및 번호 공유 (음소거 확인)</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>컨트롤타워 1인 지정 및 회의방 선언</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>OMC 기간망/IP TRUNK 구간 및 국사 확인</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>선로 케이블 규격 및 조수 확인 (72C 주간선)</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>협력사 지원출동 확인 (도착시간 10분 단위 공유)</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>인프라팀 선로담당자 추가지원 출동 확인</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>복구자재 이동 (광케이블 150m, 함체) 시간 체크</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>LTE라우터 우선복구 및 모바일 부스팅 검토</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>CCTV 장애고객 시청/구청 담당자 사전협의</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>국사 OTDR 측정거리 공유 (최근 개통회선 4.25km)</span></label>
+          </div>
+        </div>
+
+        <!-- 2단계: 복구방법 및 사전준비 -->
+        <div class="sop-section">
+          <div class="sop-header">
+            <span>2. 복구방법 및 사전준비 (현장통제)</span>
+            <span class="sop-badge ing">진행중</span>
+          </div>
+          <div class="sop-list">
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>복구방법 공유 (전주 2본 포설 후 중접, 함체신설)</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>안전관련 신호수 및 차량통제 배치 확인</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>접속구간 상황통제 담당자 지정 (A지점, B지점)</span></label>
+            <label class="sop-item" id="sop-closure-photo"><input type="checkbox" id="chk-photo" onchange="toggleSop(this)"><span id="txt-photo">단선 전·후 기설함체 사진 & 전주번호 확인</span></label>
+            <label class="sop-item checked"><input type="checkbox" checked onchange="toggleSop(this)"><span>광케이블 포설 진행 공유 (150m 포설완료)</span></label>
+            <label class="sop-item" id="sop-light-source"><input type="checkbox" id="chk-light" onchange="toggleSop(this)"><span id="txt-light">★ 유닛별 광소스(빛) 확인 후 공유 (A, B지점 모두)</span></label>
+            <label class="sop-item"><input type="checkbox" onchange="toggleSop(this)"><span>144C 이상 시 접속점별 접속팀 3팀 배치</span></label>
+          </div>
+        </div>
+
+        <!-- 3단계: 접속(복구) -->
+        <div class="sop-section">
+          <div class="sop-header">
+            <span>3. 접속 (복구 실시간 동기화)</span>
+            <span class="sop-badge ready">대기</span>
+          </div>
+          <div class="sop-list">
+            <label class="sop-item"><input type="checkbox" id="chk-core12" onchange="toggleSop(this)"><span>유닛 1, 2번 코어 접속 공유 및 선번일치 실시간 확인</span></label>
+            <label class="sop-item"><input type="checkbox" onchange="toggleSop(this)"><span>장애 및 중요코어 우선 접속 후 나머지 순차접속</span></label>
+          </div>
+        </div>
+
+        <!-- 4단계: 마무리 및 원복 -->
+        <div class="sop-section">
+          <div class="sop-header">
+            <span>4. 마무리 및 현장종결</span>
+            <span class="sop-badge ready">대기</span>
+          </div>
+          <div class="sop-list">
+            <label class="sop-item"><input type="checkbox" onchange="toggleSop(this)"><span>LTE라우터 복구 회선 철거 및 원복 진행</span></label>
+            <label class="sop-item"><input type="checkbox" onchange="toggleSop(this)"><span>신고 고객 회선 정상 개통 확인</span></label>
+            <label class="sop-item"><input type="checkbox" onchange="toggleSop(this)"><span>가해자(굴착기 등) 확인 및 현장 안전조치 마무리</span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- [중앙 패널] 브이월드 국토부 정밀 GIS 지도 & 통합 도구상자 -->
+    <div class="map-container">
+      <div id="map"></div>
+
+      <!-- 🔍 국토부 브이월드 정밀 주소 검색창 -->
+      <div class="map-search-panel">
+        <div class="search-input-box">
+          <span style="font-size: 15px; margin-left: 2px;">🔍</span>
+          <input type="text" id="map-search-input" placeholder="주소, 건물명, 번지 검색 (예: 하대동 317-35, 진주시청)" onkeydown="if(event.key==='Enter') executeAddressSearch()" oninput="toggleSearchClearBtn(this.value)">
+          <button id="search-clear-btn" class="btn-search-clear" onclick="clearAddressSearch()" title="검색어 지우기">✕</button>
+          <button class="btn-search-action" onclick="executeAddressSearch()">검색</button>
+        </div>
+        <div id="search-results-box" class="search-results-dropdown"></div>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- 🛠️ [INDEX 지도에서 이식 완료] 통합 관제 도구상자 (side-tools-bar) -->
+      <!-- (API 관련 버튼 완전 배제: 레이어, 라벨, 맞춤, 거리, 반경, 지우기, 인쇄) -->
+      <!-- ============================================================== -->
+      <div id="side-tools-bar" class="side-tools-bar">
+        <!-- 상단 제어 바: 드래그 핸들, 회전(가로/세로), 접기/펼치기 -->
+        <div class="tools-ctrl-bar">
+          <div id="tools-drag-handle" class="tools-drag-handle" title="도구상자 드래그 이동 (더블클릭: 위치 초기화)">⋮⋮</div>
+          <button id="tools-rotate-btn" class="tools-rotate-btn" onclick="toggleSideToolsOrientation()" title="가로/세로 방향 반전">🔄</button>
+          <button id="tools-collapse-btn" class="tools-collapse-btn" onclick="toggleSideToolsCollapse()" title="도구상자 축소 접기">➖</button>
+        </div>
+
+        <!-- 축소 접힘 상태일 때 마크 1개 버튼 (클릭 시 전체 펼침) -->
+        <button id="tools-expand-trigger" class="tools-expand-trigger" onclick="toggleSideToolsCollapse()" title="관제 도구상자 펼치기">
+          <span class="tool-icon">🛠️</span>
+          <span>도구</span>
+        </button>
+
+        <!-- 1. 지도 레이어 선택 (백지도 / 일반 / 위성 / 다크) -->
+        <button id="btn-layer-white" class="tool-action-btn map-layer-btn active" onclick="switchMapLayer('white')" title="국토부 브이월드 백지도">
+          <span class="tool-icon">🌟</span>
+          <span>백지도</span>
+        </button>
+        <button id="btn-layer-base" class="tool-action-btn map-layer-btn" onclick="switchMapLayer('base')" title="국토부 브이월드 일반지도">
+          <span class="tool-icon">🗺️</span>
+          <span>일반</span>
+        </button>
+        <button id="btn-layer-sat" class="tool-action-btn map-layer-btn" onclick="switchMapLayer('sat')" title="고해상도 위성항공영상">
+          <span class="tool-icon">🛰️</span>
+          <span>위성</span>
+        </button>
+        <button id="btn-layer-dark" class="tool-action-btn map-layer-btn" onclick="switchMapLayer('dark')" title="상황실 야간 다크모드">
+          <span class="tool-icon">🌙</span>
+          <span>다크</span>
+        </button>
+
+        <div class="tool-section-divider"></div>
+
+        <!-- 2. 행정구역 라벨 & 맞춤 -->
+        <button id="btn-toggle-labels" class="tool-action-btn" onclick="toggleLabelVisibility()" title="읍·면·동 행정구역 라벨 On/Off">
+          <span class="tool-icon">🏷️</span>
+          <span id="btn-label-text">라벨</span>
+        </button>
+        <button id="btn-edit-mode" class="tool-action-btn" onclick="toggleEditMode()" title="라벨 위치 맞춤 모드">
+          <span id="btn-edit-icon" class="tool-icon">🎯</span>
+          <span id="btn-edit-text">맞춤</span>
+        </button>
+        <button id="btn-reset-mode" class="tool-action-btn" onclick="resetCustomCoords()" style="display: none; color: #ef4444;" title="라벨 위치 초기화">
+          <span class="tool-icon">↩️</span>
+          <span>초기화</span>
+        </button>
+
+        <div class="tool-section-divider"></div>
+
+        <!-- 3. 관제 측정 및 인쇄 도구 -->
+        <button id="btn-tool-distance" class="tool-action-btn" onclick="toggleMeasureTool('distance')" title="거리 측정 (지도 연속 클릭)">
+          <span class="tool-icon">📏</span>
+          <span>거리</span>
+        </button>
+        <button id="btn-tool-radius" class="tool-action-btn" onclick="toggleMeasureTool('radius')" title="영향 반경 측정 (500m/1km/3km)">
+          <span class="tool-icon">⭕</span>
+          <span>반경</span>
+        </button>
+        <button class="tool-action-btn" onclick="clearAllMeasurements()" title="측정 선/원 모두 지우기">
+          <span class="tool-icon">🗑️</span>
+          <span>지우기</span>
+        </button>
+        <button class="tool-action-btn" onclick="window.print()" title="현재 관제 화면 인쇄/PDF 저장">
+          <span class="tool-icon">🖨️</span>
+          <span>인쇄</span>
+        </button>
+      </div>
+
+      <!-- 🎯 우측 하단 줌 & GPS 컨트롤러 -->
+      <div class="bottom-controls-box">
+        <button class="gps-btn" onclick="locateCurrentPosition()" title="현재 내 GPS 위치로 지도 이동">
+          <span class="gps-icon">🎯</span>
+          <span class="gps-text">내 위치</span>
+        </button>
+        <div class="zoom-btn-group">
+          <button class="zoom-btn" onclick="map.zoomIn()" title="확대">+</button>
+          <button class="zoom-btn" onclick="map.zoomOut()" title="축소">−</button>
+        </div>
+      </div>
+
+      <!-- 지도 하단 상태 안내바 -->
+      <div class="map-floating-bar">
+        <div>단선 구간: <b id="bar-route-name" style="color: #f87171;">진주대로 전주 #45A ~ #47B</b></div>
+        <span style="color: #475569;">|</span>
+        <div>국사 OTDR 거리: <b style="color: #fbbf24;">4,250m (일치)</b></div>
+        <span style="color: #475569;">|</span>
+        <div id="map-light-status" style="color: #34d399; font-weight: 700;">🟢 광소스: 양방향 검증 대기중</div>
+      </div>
+    </div>
+
+    <!-- [우측 패널] A·B지점 듀얼 접속 관제 보드 & 유닛 광소스 매트릭스 -->
+    <div class="right-panel">
+      <div class="panel-header">
+        <span>📍 A·B지점 실시간 접속 관제</span>
+        <button onclick="openMobileSimulator()" style="background: #059669; color: white; border: none; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; cursor: pointer;">📱 모바일 조작</button>
+      </div>
+
+      <div class="panel-scroll-content">
+        <!-- 1) Point A 지점 카드 -->
+        <div class="card" id="card-point-a">
+          <div class="card-title">
+            <span>🏢 Point A 지점 (국사 방면)</span>
+            <span id="badge-point-a" style="font-size: 10px; background: #065f46; color: #6ee7b7; padding: 2px 6px; border-radius: 4px;">준비완료</span>
+          </div>
+          <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.5;">
+            <div>• 현장담당: <b>이과장</b> (대성광통신 접속1팀)</div>
+            <div>• 위치: <b id="a-location-text">진주시 하대동 전주 #45A</b></div>
+            <div>• 기설함체 확인: <b id="a-photo-status" style="color: #34d399;">📸 사진 업로드 완료</b></div>
+            <div style="margin-top: 4px;">• 유닛별 광소스(빛) 측정: <b id="a-light-count" style="color: #60a5fa;">6개 유닛 정상 유입</b></div>
+          </div>
+        </div>
+
+        <!-- 2) Point B 지점 카드 -->
+        <div class="card" id="card-point-b">
+          <div class="card-title">
+            <span>🏠 Point B 지점 (가입자 방면)</span>
+            <span id="badge-point-b" style="font-size: 10px; background: #92400e; color: #fde68a; padding: 2px 6px; border-radius: 4px;">광소스 확인중</span>
+          </div>
+          <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.5;">
+            <div>• 현장담당: <b>박대리</b> (영남정보통신 접속2팀)</div>
+            <div>• 위치: <b id="b-location-text">진주시 하대동 전주 #47B</b></div>
+            <div>• 기설함체 확인: <b id="b-photo-status" style="color: #f59e0b;">⏳ 모바일 업로드 대기</b></div>
+            <div style="margin-top: 4px;">• 유닛별 광소스(빛) 측정: <b id="b-light-count" style="color: #f59e0b;">모바일 측정 대기</b></div>
+          </div>
+        </div>
+
+        <!-- 3) 유닛별 광소스(신호) 양방향 대조 매트릭스 -->
+        <div class="card" style="border: 1.5px solid #3b82f6; background: rgba(37,99,235,0.06);">
+          <div class="card-title" style="color: #60a5fa;">
+            <span>⚡ 유닛별 광소스 양방향 대조 매트릭스</span>
+            <span id="gate-lock-badge" style="font-size: 10px; background: #ef4444; color: white; padding: 2px 6px; border-radius: 4px;">융착 잠금(Lock)</span>
+          </div>
+          <div style="font-size: 11px; color: #cbd5e1;">
+            A지점과 B지점 양쪽 모두 빛(VFL)이 통과해야 광융착 승인이 떨어집니다.
+          </div>
+
+          <div style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-top: 6px;">[Point A 국사측 유닛 상태]</div>
+          <div class="light-source-grid" id="grid-point-a">
+            <div class="unit-cell active-ok">U1(청)</div>
+            <div class="unit-cell active-ok">U2(주)</div>
+            <div class="unit-cell active-ok">U3(녹)</div>
+            <div class="unit-cell active-ok">U4(갈)</div>
+            <div class="unit-cell active-ok">U5(회)</div>
+            <div class="unit-cell active-ok">U6(백)</div>
+          </div>
+
+          <div style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-top: 6px;">[Point B 가입자측 유닛 상태]</div>
+          <div class="light-source-grid" id="grid-point-b">
+            <div class="unit-cell" id="b-u1">U1(청)</div>
+            <div class="unit-cell" id="b-u2">U2(주)</div>
+            <div class="unit-cell" id="b-u3">U3(녹)</div>
+            <div class="unit-cell" id="b-u4">U4(갈)</div>
+            <div class="unit-cell" id="b-u5">U5(회)</div>
+            <div class="unit-cell" id="b-u6">U6(백)</div>
+          </div>
+        </div>
+
+        <!-- 4) 실시간 광융착 진행률 & 1,2번 코어 일치 검증 -->
+        <div class="card">
+          <div class="card-title">
+            <span>🔗 광코어 융착 복구 진행률</span>
+            <span id="splice-percent-badge" style="font-size: 11px; color: #10b981; font-weight: 800;">33.3%</span>
+          </div>
+          <div class="splice-meter">
+            <div id="splice-progress-bar" class="splice-bar"></div>
+            <div id="splice-progress-text" class="splice-text">24 / 72 코어 융착 완료</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-top: 6px;">
+            <span>• 1, 2번 코어 선번일치: <b id="core12-match-status" style="color: #f59e0b;">⏳ 검증 대기</b></span>
+            <span>• 중요코어 우선: <b>수용유닛 OMC 배포</b></span>
+          </div>
+        </div>
+
+        <!-- 5) 긴급 자재 & 가해자 보존 -->
+        <div class="card">
+          <div class="card-title">
+            <span>📦 자재 수급 & 👮 가해자 보존</span>
+          </div>
+          <div style="font-size: 11.5px; color: #cbd5e1; line-height: 1.5;">
+            <div>• 케이블: <b>72C 광케이블 150m</b> (시공사 현장인계 완료)</div>
+            <div>• 가해차량: <b>경남88가 4591 (덤프트럭)</b> - 삼성화재 접수완료</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- 3. 현장 모바일 뷰 스마트폰 시뮬레이터 (Floating Simulator) -->
+  <!-- ============================================================== -->
+  <div id="mobile-simulator-modal" onclick="closeMobileSimulator(event)">
+    <div class="phone-frame" onclick="event.stopPropagation()">
+      <div class="phone-notch">
+        <span>09:41</span>
+        <div class="notch-island"></div>
+        <span>5G 📶 98%</span>
+      </div>
+
+      <div class="phone-header">
+        <div>
+          <div style="font-size: 10px; color: #38bdf8; font-weight: 800;">FiberGuard 모바일 현장앱</div>
+          <div id="mobile-user-name" style="font-size: 13.5px; font-weight: 800; color: #ffffff;">Point B 현장담당 (영남통신 박대리)</div>
+        </div>
+        <button onclick="closeMobileSimulatorDirect()" style="background: #374151; color: white; border: none; border-radius: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer;">✕ 닫기</button>
+      </div>
+
+      <div class="phone-body">
+        <div style="display: flex; gap: 6px;">
+          <button id="btn-toggle-point-a" onclick="switchMobileRole('A')" style="flex:1; padding: 6px; border-radius: 6px; font-size: 11px; font-weight: 800; border: 1px solid #3b82f6; background: #0f172a; color: #94a3b8; cursor: pointer;">Point A (이과장)</button>
+          <button id="btn-toggle-point-b" onclick="switchMobileRole('B')" style="flex:1; padding: 6px; border-radius: 6px; font-size: 11px; font-weight: 800; border: 1px solid #10b981; background: #065f46; color: #ffffff; cursor: pointer;">Point B (박대리)</button>
+        </div>
+
+        <div class="phone-card">
+          <div style="font-size: 12px; font-weight: 800; color: #38bdf8;">📸 1. 기설함체 사진 & 전주번호 전송</div>
+          <div style="font-size: 11px; color: #94a3b8;">단선 전·후 지점의 2차 단선 여부를 증명하기 위해 기설함체 사진을 등록합니다.</div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <input type="text" id="mobile-pole-input" value="도동로 전주 #47B" style="flex: 1; background: #0f172a; border: 1px solid #475569; color: white; padding: 6px 8px; border-radius: 6px; font-size: 12px;">
+            <button class="phone-btn phone-btn-primary" style="width: auto; padding: 6px 12px;" onclick="uploadClosurePhoto()">📷 촬영 전송</button>
+          </div>
+          <div id="mobile-photo-preview" style="display: none; background: #0f172a; border: 1px solid #10b981; border-radius: 6px; padding: 6px; font-size: 11px; color: #34d399;">
+            ✅ [사진 전송완료] 기설함체_전주47B_외관양호.jpg
+          </div>
+        </div>
+
+        <div class="phone-card" style="border: 1.5px solid #10b981;">
+          <div style="font-size: 12px; font-weight: 800; color: #34d399;">⚡ 2. 유닛별 광소스(빛) 확인 보고</div>
+          <div style="font-size: 11px; color: #cbd5e1;">피복 탈피 후 1~6번 유닛에 가시광선(VFL) 또는 빛이 정상 유입되는지 확인합니다.</div>
+          <button class="phone-btn phone-btn-success" onclick="verifyLightSourceAll()">
+            <span>✨</span> <span>[Point B] 6개 전 유닛 광소스 정상 확인!</span>
+          </button>
+          <button class="phone-btn phone-btn-danger" style="margin-top: 4px; padding: 6px;" onclick="reportNoLightSource()">
+            <span>🚨</span> <span>[경보] 광신호 없음 (국사 OTDR 재측정 요청)</span>
+          </button>
+        </div>
+
+        <div class="phone-card">
+          <div style="font-size: 12px; font-weight: 800; color: #fbbf24;">🔗 3. 1·2번 코어 일치 & 융착 카운트</div>
+          <div style="font-size: 11px; color: #94a3b8;">1, 2번 코어 접속 후 국사/OMC와 통화하여 선번 일치를 확인합니다.</div>
+          <button class="phone-btn phone-btn-warning" onclick="verifyCore12Match()">
+            <span>🎯</span> <span>1, 2번 코어 선번일치 확인 완료 보고</span>
+          </button>
+
+          <div style="display: flex; gap: 6px; margin-top: 6px;">
+            <button class="phone-btn phone-btn-primary" onclick="addSplicedCores(6)">+6 코어 융착완료</button>
+            <button class="phone-btn phone-btn-primary" onclick="addSplicedCores(12)">+12 코어 완료</button>
+          </div>
+        </div>
+
+        <div class="phone-card">
+          <div style="font-size: 12px; font-weight: 800; color: #cbd5e1;">🚚 10분 주기 협력사 상태 전송</div>
+          <div style="display: flex; gap: 6px;">
+            <button class="phone-btn phone-btn-warning" style="flex:1;" onclick="sendDelayNotice()">10분 지연 알림</button>
+            <button class="phone-btn phone-btn-success" style="flex:1;" onclick="sendArrivalNotice()">현장 도착 완료</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림창 -->
+  <div id="toast" class="toast">
+    <span id="toast-icon">🔔</span>
+    <span id="toast-msg">알림 메시지</span>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- 4. 자바스크립트 통합 엔진 (도구상자, 측정도구, 브이월드, 주소검색) -->
+  <!-- ============================================================== -->
+  <script>
+    const STATE = {
+      cableSpec: '72C',
+      totalCores: 72,
+      splicedCores: 24,
+      isControlTowerDeclared: true,
+      currentMobileRole: 'B',
+      photoUploadedA: true,
+      photoUploadedB: false,
+      lightSourceA: true,
+      lightSourceB: false,
+      core12Verified: false,
+      vocCount: 14
+    };
+
+    let map;
+    let markers = {};
+    let searchMarker = null;
+
+    // 🏛️ 국토교통부 브이월드 정식 인증키
+    const VWORLD_KEY = "DD245B77-825C-4CB7-A5FE-1ECE8ADA791E";
+
+    // 지도 레이어 4종
+    let layerWhite, layerBase, layerSat, layerDark;
+
+    // 🏷️ 행정구역 라벨 및 측정 도구 레이어 그룹
+    const labelGroup = L.layerGroup();
+    const measureGroup = L.layerGroup();
+    let activeMeasureMode = null; // 'distance', 'radius', null
+    let measurePoints = [];
+    window.isLabelsVisible = false;
+    window.isEditMode = false;
+
+    // 경남 주요 읍·면·동 행정구역 좌표 (진주/사천 권역 대표)
+    const ALL_REGIONS = [
+      { name: "진주시", lat: 35.1803, lng: 128.1081, type: "city" },
+      { name: "문산읍", lat: 35.1688, lng: 128.1643, type: "eup" },
+      { name: "내동면", lat: 35.1601, lng: 128.068, type: "eup" },
+      { name: "정촌면", lat: 35.1314, lng: 128.1026, type: "eup" },
+      { name: "금곡면", lat: 35.0943, lng: 128.188, type: "eup" },
+      { name: "진성면", lat: 35.1849, lng: 128.2235, type: "eup" },
+      { name: "일반성면", lat: 35.1711, lng: 128.2772, type: "eup" },
+      { name: "이반성면", lat: 35.1692, lng: 128.3263, type: "eup" },
+      { name: "사봉면", lat: 35.1888, lng: 128.2703, type: "eup" },
+      { name: "지수면", lat: 35.235, lng: 128.2696, type: "eup" },
+      { name: "대곡면", lat: 35.2643, lng: 128.1693, type: "eup" },
+      { name: "금산면", lat: 35.214, lng: 128.1479, type: "eup" },
+      { name: "집현면", lat: 35.2391, lng: 128.0865, type: "eup" },
+      { name: "미천면", lat: 35.2992, lng: 128.1154, type: "eup" },
+      { name: "명석면", lat: 35.2195, lng: 128.0404, type: "eup" },
+      { name: "대평면", lat: 35.2327, lng: 127.9609, type: "eup" },
+      { name: "수곡면", lat: 35.1985, lng: 127.9321, type: "eup" },
+      { name: "천전동", lat: 35.1831, lng: 128.0855, type: "dong" },
+      { name: "성북동", lat: 35.1957, lng: 128.0783, type: "dong" },
+      { name: "중앙동", lat: 35.1801, lng: 128.1118, type: "dong" },
+      { name: "상봉동", lat: 35.1996, lng: 128.0749, type: "dong" },
+      { name: "상대동", lat: 35.1801, lng: 128.1118, type: "dong" },
+      { name: "하대동", lat: 35.1893, lng: 128.1274, type: "dong" },
+      { name: "상평동", lat: 35.1761, lng: 128.1091, type: "dong" },
+      { name: "초장동", lat: 35.2038, lng: 128.1161, type: "dong" },
+      { name: "평거동", lat: 35.1738, lng: 128.0654, type: "dong" },
+      { name: "신안동", lat: 35.1845, lng: 128.069, type: "dong" },
+      { name: "이현동", lat: 35.1928, lng: 128.0618, type: "dong" },
+      { name: "판문동", lat: 35.1875, lng: 128.0392, type: "dong" },
+      { name: "가호동", lat: 35.16, lng: 128.1067, type: "dong" },
+      { name: "충무공동", lat: 35.1764, lng: 128.1465, type: "dong" },
+      { name: "사천시", lat: 35.0037, lng: 128.0643, type: "city" },
+      { name: "사천읍", lat: 35.0877, lng: 128.0882, type: "eup" },
+      { name: "정동면", lat: 35.056, lng: 128.1239, type: "eup" },
+      { name: "사남면", lat: 35.0526, lng: 128.0752, type: "eup" },
+      { name: "용현면", lat: 35.0134, lng: 128.0613, type: "eup" },
+      { name: "축동면", lat: 35.1071, lng: 128.0884, type: "eup" },
+      { name: "곤양면", lat: 35.0574, lng: 127.9596, type: "eup" },
+      { name: "곤명면", lat: 35.1385, lng: 127.9735, type: "eup" },
+      { name: "서포면", lat: 35.006, lng: 127.9779, type: "eup" }
+    ];
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      startTimers();
+      initSideToolsDrag();
+    });
+
+    // 1. GIS 지도 초기화
+    function initMap() {
+      layerWhite = L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/white/{z}/{y}/{x}.png`, {
+        maxZoom: 19, minZoom: 6, attribution: '&copy; 브이월드 백지도'
+      });
+      layerBase = L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Base/{z}/{y}/{x}.png`, {
+        maxZoom: 19, minZoom: 6, attribution: '&copy; 브이월드 일반지도'
+      });
+      layerSat = L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWORLD_KEY}/Satellite/{z}/{y}/{x}.jpeg`, {
+        maxZoom: 19, minZoom: 6, attribution: '&copy; 브이월드 항공영상'
+      });
+      layerDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19, attribution: '&copy; CartoDB 다크'
+      });
+
+      // 브이월드 백지도 기본 탑재
+      map = L.map('map', {
+        zoomControl: false, // 우측 하단 커스텀 줌 버튼 사용
+        layers: [layerWhite, labelGroup, measureGroup]
+      }).setView([35.1830, 128.0980], 14);
+
+      // 1) 강남국사 마커
+      const stationIcon = L.divIcon({
+        className: 'custom-icon',
+        html: '<div style="background: #1e3a8a; border: 2px solid #60a5fa; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 11px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">🏢 강남국사 (시험실)</div>',
+        iconAnchor: [40, 15]
+      });
+      L.marker([35.1760, 128.0820], { icon: stationIcon }).addTo(map)
+        .bindPopup('<b>🏢 강남국사 3층 광단국</b><br>OTDR 최근 개통회선 결함거리: 4,250m');
+
+      // 2) 72C 선로 루트 점선
+      const routeCoords = [
+        [35.1760, 128.0820],
+        [35.1785, 128.0890],
+        [35.1810, 128.0945],
+        [35.1835, 128.0995],
+        [35.1870, 128.1060]
+      ];
+      L.polyline(routeCoords, { color: '#2563eb', weight: 5, dashArray: '6, 8', opacity: 0.9 }).addTo(map);
+
+      // 3) OTDR 4,250m 파단 핫스팟 링
+      L.circle([35.1822, 128.0970], {
+        color: '#ef4444',
+        fillColor: '#f87171',
+        fillOpacity: 0.25,
+        radius: 120,
+        weight: 2
+      }).addTo(map).bindPopup('🎯 <b>OTDR 역추적 결함구간</b> (반경 120m 오차범위)');
+
+      // 4) Point A 지점 마커
+      const iconA = L.divIcon({
+        className: 'custom-icon',
+        html: '<div style="background: #065f46; border: 2px solid #34d399; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 11.5px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">📍 단선 Point A (전주 #45A)</div>',
+        iconAnchor: [60, 15]
+      });
+      markers.pointA = L.marker([35.1810, 128.0945], { icon: iconA }).addTo(map)
+        .bindPopup('<b>Point A (국사 방면)</b><br>대성광통신 이과장<br>광소스 검증: 🟢 정상');
+
+      // 5) Point B 지점 마커
+      const iconB = L.divIcon({
+        className: 'custom-icon',
+        html: '<div id="map-marker-b" style="background: #92400e; border: 2px solid #fbbf24; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 800; font-size: 11.5px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">📍 단선 Point B (전주 #47B)</div>',
+        iconAnchor: [60, 15]
+      });
+      markers.pointB = L.marker([35.1835, 128.0995], { icon: iconB }).addTo(map)
+        .bindPopup('<b>Point B (가입자 방면)</b><br>영남정보통신 박대리<br>광소스: ⏳ 대기중');
+
+      // 6) 협력사 출동 차량 마커
+      const carIcon = L.divIcon({
+        className: 'custom-icon',
+        html: '<div style="background: #4f46e5; border: 1.5px solid white; color: white; padding: 3px 7px; border-radius: 12px; font-size: 10.5px; font-weight: 800; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">🚚 대성광통신 (도착)</div>',
+        iconAnchor: [35, 10]
+      });
+      L.marker([35.1812, 128.0950], { icon: carIcon }).addTo(map);
+
+      // 지도 클릭 시: 측정 도구 동작 또는 검색창 닫기
+      map.on('click', function(e) {
+        closeSearchResultsBox();
+
+        if (!activeMeasureMode) return;
+        const latlng = e.latlng;
+
+        if (activeMeasureMode === 'distance') {
+          measurePoints.push(latlng);
+          L.circleMarker(latlng, { radius: 5, color: '#ef4444', fillColor: '#ffffff', fillOpacity: 1, weight: 2 }).addTo(measureGroup);
+
+          if (measurePoints.length > 1) {
+            L.polyline(measurePoints, { color: '#ef4444', weight: 3, dashArray: '6, 6' }).addTo(measureGroup);
+            let totalMeters = 0;
+            for (let i = 0; i < measurePoints.length - 1; i++) {
+              totalMeters += measurePoints[i].distanceTo(measurePoints[i+1]);
+            }
+            const distStr = totalMeters >= 1000 ? (totalMeters / 1000).toFixed(2) + ' km' : Math.round(totalMeters) + ' m';
+            L.popup({ closeButton: false, offset: [0, -10] })
+              .setLatLng(latlng)
+              .setContent(`<div style="padding: 2px 6px; font-size: 12px; font-weight: 800; color: #ef4444;">총 거리: ${distStr}</div>`)
+              .openOn(map);
+          }
+        } else if (activeMeasureMode === 'radius') {
+          measureGroup.clearLayers();
+          L.circleMarker(latlng, { radius: 6, color: '#2563eb', fillColor: '#ffffff', weight: 2 }).addTo(measureGroup);
+          L.circle(latlng, { radius: 500, color: '#3b82f6', weight: 1.5, fillOpacity: 0.15 }).addTo(measureGroup);
+          L.circle(latlng, { radius: 1000, color: '#ef4444', weight: 2, dashArray: '4, 4', fillOpacity: 0.08 }).addTo(measureGroup);
+          L.circle(latlng, { radius: 3000, color: '#f59e0b', weight: 1.5, dashArray: '6, 6', fillOpacity: 0.04 }).addTo(measureGroup);
+
+          L.popup()
+            .setLatLng(latlng)
+            .setContent(`
+              <div style="font-size: 12px; line-height: 1.5; padding: 4px;">
+                <strong style="color: #ef4444;">⭕ 단선 영향 반경 산출</strong><br>
+                • 1차 반경: <b>500m</b> (즉각 피해)<br>
+                • 2차 반경: <b>1.0km</b> (선로 분기 구간)<br>
+                • 3차 반경: <b>3.0km</b> (광역 파급 구간)
+              </div>
+            `)
+            .openOn(map);
+        }
+      });
+    }
+
+    // ==============================================================
+    // 🛠️ 2. 도구상자 제어 및 기능 (도구상자 드래그, 회전, 접기, 측정, 라벨)
+    // ==============================================================
+
+    // 지도 레이어 전환
+    function switchMapLayer(type) {
+      map.removeLayer(layerWhite);
+      map.removeLayer(layerBase);
+      map.removeLayer(layerSat);
+      map.removeLayer(layerDark);
+
+      document.querySelectorAll('.map-layer-btn').forEach(b => b.classList.remove('active'));
+
+      if (type === 'white') {
+        layerWhite.addTo(map);
+        document.getElementById('btn-layer-white').classList.add('active');
+        showToast('🌟 [브이월드 백지도] 고시인성 지도로 전환되었습니다.', '🌟');
+      } else if (type === 'base') {
+        layerBase.addTo(map);
+        document.getElementById('btn-layer-base').classList.add('active');
+        showToast('🗺️ [브이월드 일반지도] 표준 지형도로 전환되었습니다.', '🗺️');
+      } else if (type === 'sat') {
+        layerSat.addTo(map);
+        document.getElementById('btn-layer-sat').classList.add('active');
+        showToast('🛰️ [브이월드 위성영상] 고해상도 항공사진으로 전환되었습니다.', '🛰️');
+      } else if (type === 'dark') {
+        layerDark.addTo(map);
+        document.getElementById('btn-layer-dark').classList.add('active');
+        showToast('🌙 [다크모드 지도] 상황실 야간 모드로 전환되었습니다.', '🌙');
+      }
+    }
+
+    // 도구바 가로/세로 방향 반전 토글
+    function toggleSideToolsOrientation() {
+      const bar = document.getElementById('side-tools-bar');
+      const rotateBtn = document.getElementById('tools-rotate-btn');
+      if (!bar) return;
+
+      bar.classList.toggle('horizontal');
+      const isHorizontal = bar.classList.contains('horizontal');
+      localStorage.setItem('side_tools_bar_orientation', isHorizontal ? 'horizontal' : 'vertical');
+
+      if (rotateBtn) {
+        rotateBtn.title = isHorizontal ? '세로 방향으로 반전' : '가로 방향으로 반전';
+      }
+      showToast(isHorizontal ? '↔️ 도구상자가 가로로 반전되었습니다.' : '↕️ 도구상자가 세로로 반전되었습니다.', '🔄');
+    }
+
+    // 도구바 축소 접기/펼치기 토글
+    function toggleSideToolsCollapse(forceState = null) {
+      const bar = document.getElementById('side-tools-bar');
+      if (!bar) return;
+
+      if (forceState !== null) {
+        if (forceState) bar.classList.add('collapsed');
+        else bar.classList.remove('collapsed');
+      } else {
+        bar.classList.toggle('collapsed');
+      }
+
+      const isCollapsed = bar.classList.contains('collapsed');
+      localStorage.setItem('side_tools_bar_collapsed', isCollapsed ? '1' : '0');
+
+      if (isCollapsed) {
+        showToast('📦 도구상자가 마크 하나 크기로 최소화되었습니다. (클릭 시 다시 펼쳐집니다)', '📦');
+      } else {
+        showToast('📖 도구상자가 전체 펼쳐졌습니다.', '📖');
+      }
+    }
+
+    // 도구상자 전체 화면 자유 드래그 이동
+    function initSideToolsDrag() {
+      const bar = document.getElementById('side-tools-bar');
+      const handle = document.getElementById('tools-drag-handle');
+      const rotateBtn = document.getElementById('tools-rotate-btn');
+      if (!bar || !handle) return;
+
+      const savedOrientation = localStorage.getItem('side_tools_bar_orientation');
+      if (savedOrientation === 'horizontal') {
+        bar.classList.add('horizontal');
+        if (rotateBtn) rotateBtn.title = '세로 방향으로 반전';
+      }
+
+      const savedCollapsed = localStorage.getItem('side_tools_bar_collapsed');
+      if (savedCollapsed === '1') {
+        bar.classList.add('collapsed');
+      }
+
+      try {
+        const savedPos = JSON.parse(localStorage.getItem('side_tools_bar_pos') || 'null');
+        if (savedPos && typeof savedPos.top === 'number' && typeof savedPos.left === 'number') {
+          bar.style.top = Math.max(10, Math.min(window.innerHeight - 50, savedPos.top)) + 'px';
+          bar.style.left = Math.max(10, Math.min(window.innerWidth - 50, savedPos.left)) + 'px';
+          bar.classList.add('custom-pos');
+        }
+      } catch(e) {}
+
+      let isDragging = false;
+      let startX = 0, startY = 0;
+      let initialLeft = 0, initialTop = 0;
+
+      handle.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        isDragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+
+        const rect = bar.getBoundingClientRect();
+        initialLeft = rect.left;
+        initialTop = rect.top;
+
+        bar.classList.add('custom-pos');
+        document.body.style.userSelect = 'none';
+
+        const onMouseMove = (moveEvent) => {
+          if (!isDragging) return;
+          const deltaX = moveEvent.clientX - startX;
+          const deltaY = moveEvent.clientY - startY;
+
+          let nextLeft = Math.max(10, Math.min(window.innerWidth - bar.offsetWidth - 10, initialLeft + deltaX));
+          let nextTop = Math.max(10, Math.min(window.innerHeight - bar.offsetHeight - 10, initialTop + deltaY));
+
+          bar.style.left = nextLeft + 'px';
+          bar.style.top = nextTop + 'px';
+        };
+
+        const onMouseUp = () => {
+          if (isDragging) {
+            isDragging = false;
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+
+            const finalRect = bar.getBoundingClientRect();
+            localStorage.setItem('side_tools_bar_pos', JSON.stringify({
+              top: Math.round(finalRect.top),
+              left: Math.round(finalRect.left)
+            }));
+            showToast('📍 도구상자 위치가 저장되었습니다.', '📍');
+          }
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+
+      handle.addEventListener('dblclick', () => {
+        localStorage.removeItem('side_tools_bar_pos');
+        bar.style.top = '';
+        bar.style.left = '';
+        bar.classList.remove('custom-pos');
+        showToast('↩️ 도구상자 위치가 우측 기본 위치로 초기화되었습니다.', '↩️');
+      });
+    }
+
+    // 📏 측정 도구 토글 (거리 / 반경)
+    function toggleMeasureTool(toolType) {
+      if (activeMeasureMode === toolType) {
+        activeMeasureMode = null;
+        updateMeasureButtonsUI();
+        showToast('측정 모드가 종료되었습니다.', 'ℹ️');
+        return;
+      }
+
+      activeMeasureMode = toolType;
+      updateMeasureButtonsUI();
+      measurePoints = [];
+
+      if (toolType === 'distance') {
+        showToast('📏 [거리 측정] 지도 위 지점들을 연속 클릭하세요. 실시간 거리가 산출됩니다.', '📏');
+      } else if (toolType === 'radius') {
+        showToast('⭕ [반경 측정] 단선 지점을 클릭하면 영향 반경(500m/1km/3km)이 표출됩니다.', '⭕');
+      }
+    }
+
+    function updateMeasureButtonsUI() {
+      const btnDist = document.getElementById('btn-tool-distance');
+      const btnRadius = document.getElementById('btn-tool-radius');
+      if (btnDist) btnDist.classList.toggle('active', activeMeasureMode === 'distance');
+      if (btnRadius) btnRadius.classList.toggle('active', activeMeasureMode === 'radius');
+    }
+
+    function clearAllMeasurements() {
+      measureGroup.clearLayers();
+      measurePoints = [];
+      activeMeasureMode = null;
+      updateMeasureButtonsUI();
+      if (searchMarker) {
+        map.removeLayer(searchMarker);
+        searchMarker = null;
+        document.getElementById('map-search-input').value = '';
+        toggleSearchClearBtn('');
+      }
+      showToast('🗑️ 모든 거리·반경 측정 선과 검색 핀이 초기화되었습니다.', '🗑️');
+    }
+
+    // 🏷️ 읍·면·동 행정구역 라벨 토글
+    function toggleLabelVisibility() {
+      window.isLabelsVisible = !window.isLabelsVisible;
+      const btn = document.getElementById('btn-toggle-labels');
+      if (window.isLabelsVisible) {
+        if (btn) btn.classList.add('active');
+        showToast('🏷️ 읍·면·동 행정구역 라벨이 표시됩니다.', '🏷️');
+      } else {
+        if (btn) btn.classList.remove('active');
+        showToast('🏷️ 행정구역 라벨이 숨겨졌습니다.', '🏷️');
+      }
+      renderLabels();
+    }
+
+    function toggleEditMode() {
+      window.isEditMode = !window.isEditMode;
+      const btn = document.getElementById('btn-edit-mode');
+      const icon = document.getElementById('btn-edit-icon');
+      const text = document.getElementById('btn-edit-text');
+
+      if (window.isEditMode) {
+        if (!window.isLabelsVisible) {
+          window.isLabelsVisible = true;
+          const lBtn = document.getElementById('btn-toggle-labels');
+          if (lBtn) lBtn.classList.add('active');
+        }
+        if (btn) btn.classList.add('active');
+        if (icon) icon.innerText = '✅';
+        if (text) text.innerText = '완료';
+        showToast('🎯 [위치 맞춤 모드 ON] 뱃지를 마우스로 드래그하여 글자 위에 놓으세요.', '🎯');
+      } else {
+        if (btn) btn.classList.remove('active');
+        if (icon) icon.innerText = '🎯';
+        if (text) text.innerText = '맞춤';
+        showToast('🔒 [위치 맞춤 모드 종료] 라벨 위치가 저장되었습니다.', '🔒');
+      }
+      renderLabels();
+    }
+
+    function resetCustomCoords() {
+      if (confirm('수정한 라벨 위치를 모두 기본값으로 초기화하시겠습니까?')) {
+        localStorage.removeItem('map_custom_coords');
+        document.getElementById('btn-reset-mode').style.display = 'none';
+        showToast('↩️ 모든 라벨 위치가 기본값으로 복원되었습니다.', '↩️');
+        renderLabels();
+      }
+    }
+
+    function renderLabels() {
+      labelGroup.clearLayers();
+      if (!window.isLabelsVisible) return;
+
+      const savedCoords = JSON.parse(localStorage.getItem('map_custom_coords') || '{}');
+      const hasCustom = Object.keys(savedCoords).length > 0;
+      const resetBtn = document.getElementById('btn-reset-mode');
+      if (resetBtn) resetBtn.style.display = hasCustom ? 'flex' : 'none';
+
+      ALL_REGIONS.forEach(loc => {
+        const custom = savedCoords[loc.name];
+        const lat = custom ? custom.lat : loc.lat;
+        const lng = custom ? custom.lng : loc.lng;
+
+        const cls = loc.type === 'city' ? 'custom-city-label' : (loc.type === 'eup' ? 'custom-eupmyeon-label' : 'custom-dong-label');
+        const icon = L.divIcon({
+          className: cls,
+          html: loc.name,
+          iconSize: null,
+          iconAnchor: loc.type === 'city' ? [25, 12] : [20, 10]
+        });
+
+        const marker = L.marker([lat, lng], {
+          icon: icon,
+          draggable: window.isEditMode,
+          interactive: true
+        });
+
+        if (window.isEditMode) {
+          marker.on('dragend', function(e) {
+            const pos = e.target.getLatLng();
+            savedCoords[loc.name] = { lat: Math.round(pos.lat*10000)/10000, lng: Math.round(pos.lng*10000)/10000 };
+            localStorage.setItem('map_custom_coords', JSON.stringify(savedCoords));
+            showToast(`✅ [${loc.name}] 위치 저장 완료!`, '✅');
+            if (resetBtn) resetBtn.style.display = 'flex';
+          });
+        }
+
+        marker.addTo(labelGroup);
+      });
+    }
+
+    // 🎯 GPS 내 위치 찾기
+    function locateCurrentPosition() {
+      if (!navigator.geolocation) {
+        showToast('⚠️ 현재 브라우저에서 GPS 위치 조회를 지원하지 않습니다.', '⚠️');
+        return;
+      }
+      showToast('🛰️ 현재 GPS 위치를 조회 중입니다...', '🛰️');
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          map.flyTo([lat, lng], 15, { duration: 1.2 });
+
+          L.circleMarker([lat, lng], {
+            radius: 8, color: '#ffffff', weight: 3, fillColor: '#2563eb', fillOpacity: 1
+          }).addTo(map).bindPopup('<b>📍 내 현재 위치</b>').openPopup();
+
+          showToast('🎯 내 위치로 이동했습니다.', '🎯');
+        },
+        () => {
+          showToast('⚠️ GPS 수신에 실패했습니다.', '⚠️');
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    }
+
+    // ==============================================================
+    // 🔍 3. 국토교통부 브이월드 정밀 주소 검색 엔진 (자체 검색, 팝업 없음)
+    // ==============================================================
+    function fetchVWorldJsonp(url) {
+      return new Promise((resolve, reject) => {
+        const callbackName = 'vworld_cb_' + Math.random().toString(36).substring(2, 9);
+        const script = document.createElement('script');
+        script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + callbackName;
+        
+        let timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error('JSONP Timeout'));
+        }, 5000);
+
+        function cleanup() {
+          if (timeout) clearTimeout(timeout);
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+
+        window[callbackName] = function(data) {
+          cleanup();
+          resolve(data);
+        };
+        script.onerror = function() {
+          cleanup();
+          reject(new Error('JSONP Network Error'));
+        };
+        document.body.appendChild(script);
+      });
+    }
+
+    function generateSmartAddressQueries(rawKeyword) {
+      const trimmed = rawKeyword.trim();
+      const qList = [trimmed];
+
+      const spaced = trimmed.replace(/([가-힣]+)(\d+[-]?\d*)/g, '$1 $2').trim();
+      if (spaced !== trimmed) qList.push(spaced);
+
+      if (!trimmed.includes('진주') && !trimmed.includes('경남') && !trimmed.includes('사천')) {
+        qList.push(`진주시 ${trimmed}`);
+        if (spaced !== trimmed) qList.push(`진주시 ${spaced}`);
+        qList.push(`경상남도 진주시 ${trimmed}`);
+      }
+
+      const noNum = trimmed.replace(/[\d\-번지길호]+/g, '').trim();
+      if (noNum && noNum !== trimmed && noNum.length >= 2) {
+        qList.push(`진주시 ${noNum}`);
+        qList.push(noNum);
+      }
+
+      return [...new Set(qList)];
+    }
+
+    let searchCandidates = [];
+
+    async function executeAddressSearch() {
+      const input = document.getElementById('map-search-input');
+      const keyword = input.value.trim();
+      if (!keyword) {
+        showToast('⚠️ 찾으실 주소나 건물명을 입력해 주세요.', '⚠️');
+        input.focus();
+        return;
+      }
+
+      showToast(`🔍 [${keyword}] 국토교통부 정밀 주소 조회 중...`, '🔍');
+      const queries = generateSmartAddressQueries(keyword);
+      searchCandidates = [];
+      const seenCoords = new Set();
+
+      function addCandidate(item) {
+        if (!item || !item.lat || !item.lng) return;
+        const key = `${item.lat.toFixed(4)},${item.lng.toFixed(4)}`;
+        if (seenCoords.has(key)) return;
+        seenCoords.add(key);
+        searchCandidates.push(item);
+      }
+
+      const tasks = [];
+      queries.slice(0, 3).forEach(q => {
+        // 도로명
+        const roadUrl = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&address=${encodeURIComponent(q)}&refine=true&simple=false&format=json&type=road&key=${VWORLD_KEY}`;
+        tasks.push(fetchVWorldJsonp(roadUrl).then(data => {
+          if (data && data.response && data.response.status === 'OK' && data.response.result) {
+            const txt = (data.response.refined && data.response.refined.text) ? data.response.refined.text : q;
+            addCandidate({
+              lat: parseFloat(data.response.result.point.y),
+              lng: parseFloat(data.response.result.point.x),
+              title: txt,
+              type: 'road',
+              typeLabel: '도로명'
+            });
+          }
+        }).catch(()=>{}));
+
+        // 지번
+        const parcelUrl = `https://api.vworld.kr/req/address?service=address&request=getcoord&version=2.0&crs=epsg:4326&address=${encodeURIComponent(q)}&refine=true&simple=false&format=json&type=parcel&key=${VWORLD_KEY}`;
+        tasks.push(fetchVWorldJsonp(parcelUrl).then(data => {
+          if (data && data.response && data.response.status === 'OK' && data.response.result) {
+            const txt = (data.response.refined && data.response.refined.text) ? data.response.refined.text : q;
+            addCandidate({
+              lat: parseFloat(data.response.result.point.y),
+              lng: parseFloat(data.response.result.point.x),
+              title: txt,
+              type: 'parcel',
+              typeLabel: '지번'
+            });
+          }
+        }).catch(()=>{}));
+
+        // 장소/건물명
+        const placeUrl = `https://api.vworld.kr/req/search?service=search&request=search&version=2.0&crs=EPSG:4326&size=5&page=1&query=${encodeURIComponent(q)}&type=place&format=json&key=${VWORLD_KEY}`;
+        tasks.push(fetchVWorldJsonp(placeUrl).then(data => {
+          if (data && data.response && data.response.status === 'OK' && data.response.result && data.response.result.items) {
+            data.response.result.items.forEach(it => {
+              const road = it.address ? (it.address.road || '') : '';
+              const parcel = it.address ? (it.address.parcel || '') : '';
+              addCandidate({
+                lat: parseFloat(it.point.y),
+                lng: parseFloat(it.point.x),
+                title: it.title || road || parcel,
+                subAddr: road || parcel,
+                type: 'place',
+                typeLabel: '장소/건물'
+              });
+            });
+          }
+        }).catch(()=>{}));
+      });
+
+      await Promise.all(tasks);
+
+      if (searchCandidates.length === 0) {
+        showToast(`⚠️ [${keyword}] 주소를 찾을 수 없습니다. 도로명이나 지번을 다시 확인해 주세요.`, '⚠️');
+        return;
+      }
+
+      if (searchCandidates.length === 1) {
+        closeSearchResultsBox();
+        selectAddressCandidate(0);
+      } else {
+        renderSearchResultsDropdown();
+      }
+    }
+
+    function renderSearchResultsDropdown() {
+      const box = document.getElementById('search-results-box');
+      box.innerHTML = '';
+      box.style.display = 'block';
+
+      searchCandidates.forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = 'candidate-item';
+        div.innerHTML = `
+          <div class="candidate-item-title">
+            <span class="candidate-badge ${item.type}">${item.typeLabel}</span>
+            <span>${item.title}</span>
+          </div>
+          ${item.subAddr ? `<div class="candidate-item-sub">${item.subAddr}</div>` : ''}
+        `;
+        div.onclick = () => selectAddressCandidate(idx);
+        box.appendChild(div);
+      });
+    }
+
+    function closeSearchResultsBox() {
+      const box = document.getElementById('search-results-box');
+      if (box) box.style.display = 'none';
+    }
+
+    function selectAddressCandidate(idx) {
+      const item = searchCandidates[idx];
+      if (!item) return;
+
+      closeSearchResultsBox();
+      document.getElementById('map-search-input').value = item.title;
+      toggleSearchClearBtn(item.title);
+
+      map.flyTo([item.lat, item.lng], 16, { duration: 1.2 });
+
+      if (searchMarker) map.removeLayer(searchMarker);
+
+      const pinIcon = L.divIcon({
+        className: 'custom-pin-icon',
+        html: `
+          <div style="background: #2563eb; color: white; padding: 4px 8px; border-radius: 8px; border: 2px solid #ffffff; font-weight: 800; font-size: 11px; white-space: nowrap; box-shadow: 0 4px 12px rgba(37,99,235,0.6); display: flex; align-items: center; gap: 4px;">
+            <span>📍</span> <span>${item.title}</span>
+          </div>
+        `,
+        iconAnchor: [50, 15]
+      });
+
+      searchMarker = L.marker([item.lat, item.lng], { icon: pinIcon }).addTo(map);
+
+      const popupHtml = `
+        <div style="padding: 6px; font-size: 12px; min-width: 240px; color: #1e293b;">
+          <div style="font-size: 13.5px; font-weight: 800; color: #2563eb; margin-bottom: 4px;">📍 검색 위치 확인</div>
+          <div style="font-weight: 700; font-size: 12px; margin-bottom: 2px;">${item.title}</div>
+          ${item.subAddr ? `<div style="font-size: 11px; color: #64748b; margin-bottom: 6px;">${item.subAddr}</div>` : ''}
+          <div style="font-size: 10.5px; color: #94a3b8; margin-bottom: 8px;">좌표: ${item.lat.toFixed(5)}, ${item.lng.toFixed(5)}</div>
+
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <button onclick="setAsPointA(${item.lat}, ${item.lng}, '${item.title.replace(/'/g, "\\'")}')" style="background: #065f46; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 800; cursor: pointer;">
+              🏢 이 위치를 [Point A 단선지점]으로 지정
+            </button>
+            <button onclick="setAsPointB(${item.lat}, ${item.lng}, '${item.title.replace(/'/g, "\\'")}')" style="background: #92400e; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 800; cursor: pointer;">
+              🏠 이 위치를 [Point B 단선지점]으로 지정
+            </button>
+            <button onclick="clearAddressSearch()" style="background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 4px; border-radius: 6px; font-size: 11px; cursor: pointer;">
+              🗑️ 핀 삭제
+            </button>
+          </div>
+        </div>
+      `;
+
+      searchMarker.bindPopup(popupHtml).openPopup();
+      showToast(`📍 [${item.title}] 검색 위치로 이동했습니다!`, '📍');
+    }
+
+    function setAsPointA(lat, lng, name) {
+      if (markers.pointA) markers.pointA.setLatLng([lat, lng]);
+      document.getElementById('a-location-text').innerText = name;
+      document.getElementById('bar-route-name').innerText = `${name} ~ Point B 구간`;
+      map.closePopup();
+      showToast(`🏢 Point A 단선 위치가 [${name}]으로 갱신되었습니다!`, '🏢');
+    }
+
+    function setAsPointB(lat, lng, name) {
+      if (markers.pointB) markers.pointB.setLatLng([lat, lng]);
+      document.getElementById('b-location-text').innerText = name;
+      document.getElementById('bar-route-name').innerText = `Point A ~ ${name} 구간`;
+      map.closePopup();
+      showToast(`🏠 Point B 단선 위치가 [${name}]으로 갱신되었습니다!`, '🏠');
+    }
+
+    function toggleSearchClearBtn(val) {
+      const btn = document.getElementById('search-clear-btn');
+      if (btn) btn.style.display = val.trim() ? 'block' : 'none';
+    }
+
+    function clearAddressSearch() {
+      const input = document.getElementById('map-search-input');
+      if (input) input.value = '';
+      toggleSearchClearBtn('');
+      closeSearchResultsBox();
+      if (searchMarker) {
+        map.removeLayer(searchMarker);
+        searchMarker = null;
+      }
+      showToast('🗑️ 검색 핀이 초기화되었습니다.', '🗑️');
+    }
+
+    // 4. 타이머 가동 (장애 경과시간 및 10분 카운트다운)
+    function startTimers() {
+      let totalSeconds = 1935;
+      let tenMinSeconds = 402;
+
+      setInterval(() => {
+        totalSeconds++;
+        const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+        const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+        const s = String(totalSeconds % 60).padStart(2, '0');
+        document.getElementById('incident-timer').innerText = `⏱️ ${h}:${m}:${s} 경과`;
+
+        tenMinSeconds--;
+        if (tenMinSeconds <= 0) {
+          tenMinSeconds = 600;
+          STATE.vocCount += 2;
+          document.getElementById('voc-count').innerText = `${STATE.vocCount}건`;
+          showToast('📊 10분 주기 VOC 접수 현황 및 협력사 공유가 갱신되었습니다.', '📊');
+        }
+        const tm = String(Math.floor(tenMinSeconds / 60)).padStart(2, '0');
+        const ts = String(tenMinSeconds % 60).padStart(2, '0');
+        document.getElementById('timer-10m').innerText = `다음 공유: ${tm}분 ${ts}초 후`;
+      }, 1000);
+    }
+
+    // 5. 모바일 시뮬레이터 조작 및 실시간 상황실 동기화
+    function openMobileSimulator() {
+      document.getElementById('mobile-simulator-modal').style.display = 'flex';
+      showToast('📱 현장 작업자 모바일 뷰가 열렸습니다. 직접 조작해 보세요!', '📱');
+    }
+    function closeMobileSimulator(e) {
+      if (e.target.id === 'mobile-simulator-modal') {
+        document.getElementById('mobile-simulator-modal').style.display = 'none';
+      }
+    }
+    function closeMobileSimulatorDirect() {
+      document.getElementById('mobile-simulator-modal').style.display = 'none';
+    }
+
+    function switchMobileRole(role) {
+      STATE.currentMobileRole = role;
+      const btnA = document.getElementById('btn-toggle-point-a');
+      const btnB = document.getElementById('btn-toggle-point-b');
+      const name = document.getElementById('mobile-user-name');
+
+      if (role === 'A') {
+        btnA.style.background = '#1e3a8a'; btnA.style.color = '#ffffff';
+        btnB.style.background = '#0f172a'; btnB.style.color = '#94a3b8';
+        name.innerText = 'Point A 현장담당 (대성광통신 이과장)';
+        document.getElementById('mobile-pole-input').value = '도동로 전주 #45A';
+      } else {
+        btnB.style.background = '#065f46'; btnB.style.color = '#ffffff';
+        btnA.style.background = '#0f172a'; btnA.style.color = '#94a3b8';
+        name.innerText = 'Point B 현장담당 (영남통신 박대리)';
+        document.getElementById('mobile-pole-input').value = '도동로 전주 #47B';
+      }
+    }
+
+    function uploadClosurePhoto() {
+      const pole = document.getElementById('mobile-pole-input').value;
+      const preview = document.getElementById('mobile-photo-preview');
+      preview.style.display = 'block';
+      preview.innerHTML = `✅ [사진 전송완료] 기설함체_${pole}_외관양호.jpg`;
+
+      if (STATE.currentMobileRole === 'B') {
+        STATE.photoUploadedB = true;
+        document.getElementById('b-photo-status').innerHTML = '📸 사진 업로드 완료';
+        document.getElementById('b-photo-status').style.color = '#34d399';
+      }
+      document.getElementById('chk-photo').checked = true;
+      document.getElementById('sop-closure-photo').classList.add('checked');
+
+      showToast(`📸 ${pole} 기설함체 사진이 상황실로 실시간 전송되었습니다!`, '📸');
+    }
+
+    function verifyLightSourceAll() {
+      STATE.lightSourceB = true;
+      showToast('✨ Point B의 6개 전 유닛 광소스 정상 확인이 상황실로 보고되었습니다!', '✨');
+
+      document.getElementById('badge-point-b').innerText = '광소스 완료';
+      document.getElementById('badge-point-b').style.background = '#065f46';
+      document.getElementById('badge-point-b').style.color = '#6ee7b7';
+      document.getElementById('b-light-count').innerText = '6개 유닛 정상 유입 (확인완료)';
+      document.getElementById('b-light-count').style.color = '#34d399';
+
+      for (let i = 1; i <= 6; i++) {
+        const cell = document.getElementById(`b-u${i}`);
+        if (cell) cell.className = 'unit-cell active-ok';
+      }
+
+      const lockBadge = document.getElementById('gate-lock-badge');
+      lockBadge.innerText = '🟢 광융착 승인 (Unlock)';
+      lockBadge.style.background = '#059669';
+
+      document.getElementById('chk-light').checked = true;
+      document.getElementById('sop-light-source').classList.add('checked');
+
+      document.getElementById('map-light-status').innerHTML = '🟢 광소스: 양방향(A·B) 정상 검증완료 (융착 진행)';
+      const markerBEl = document.getElementById('map-marker-b');
+      if (markerBEl) {
+        markerBEl.style.background = '#065f46';
+        markerBEl.style.borderColor = '#34d399';
+      }
+    }
+
+    function reportNoLightSource() {
+      STATE.lightSourceB = false;
+      const lockBadge = document.getElementById('gate-lock-badge');
+      lockBadge.innerText = '🚨 2차 단선 의심 (융착 중단)';
+      lockBadge.style.background = '#dc2626';
+
+      for (let i = 1; i <= 6; i++) {
+        const cell = document.getElementById(`b-u${i}`);
+        if (cell) cell.className = 'unit-cell active-fail';
+      }
+      document.getElementById('b-light-count').innerText = '🚨 광신호 없음 (국사 OTDR 재측정 요청)';
+      document.getElementById('b-light-count').style.color = '#f87171';
+
+      showToast('🚨 [비상] B지점에 광신호가 들어오지 않습니다! 국사 OTDR 재측정 요청 발령!', '🚨');
+    }
+
+    function verifyCore12Match() {
+      STATE.core12Verified = true;
+      document.getElementById('core12-match-status').innerText = '✅ 선번일치 확인완료';
+      document.getElementById('core12-match-status').style.color = '#34d399';
+      document.getElementById('chk-core12').checked = true;
+      document.getElementById('chk-core12').parentElement.classList.add('checked');
+
+      showToast('🎯 국사/OMC 시험실에서 1, 2번 코어 선번 일치 및 링크 업을 확인했습니다!', '🎯');
+    }
+
+    function addSplicedCores(count) {
+      if (!STATE.lightSourceB) {
+        showToast('⚠️ 광소스 확인이 완료되지 않아 광융착을 진행할 수 없습니다!', '⚠️');
+        return;
+      }
+      STATE.splicedCores = Math.min(STATE.totalCores, STATE.splicedCores + count);
+      const percent = ((STATE.splicedCores / STATE.totalCores) * 100).toFixed(1);
+
+      document.getElementById('splice-progress-bar').style.width = `${percent}%`;
+      document.getElementById('splice-progress-text').innerText = `${STATE.splicedCores} / ${STATE.totalCores} 코어 융착 완료 (${percent}%)`;
+      document.getElementById('splice-percent-badge').innerText = `${percent}%`;
+
+      showToast(`⚡ ${count}개 코어 융착이 추가 완료되었습니다! (누적: ${STATE.splicedCores}심)`, '⚡');
+    }
+
+    function sendDelayNotice() {
+      showToast('🚚 [협력사 알림] 교통 정체로 인해 도착이 약 10분 지연됩니다.', '🚚');
+    }
+    function sendArrivalNotice() {
+      showToast('📍 [협력사 알림] 현장 도착 완료 후 안전 조치(신호수) 배치를 마쳤습니다.', '📍');
+    }
+
+    function declareControlTower() {
+      showToast('👑 [지휘권 선언] 회의방에 "김선로 차장 총괄 지휘 선언" 안내 방송이 송출되었습니다.', '👑');
+    }
+
+    function onCableSpecChange(spec) {
+      STATE.cableSpec = spec;
+      const banner = document.getElementById('infra-alert-banner');
+      if (spec === '72C' || spec === '144C' || spec === '288C') {
+        banner.style.display = 'flex';
+        showToast(`🚨 ${spec} 대형 기간망 선로로 변경되어 인프라팀 핫라인이 활성화되었습니다.`, '🚨');
+      } else {
+        banner.style.display = 'none';
+        showToast(`ℹ️ ${spec} 일반 선로로 전환되었습니다.`, 'ℹ️');
+      }
+    }
+
+    function callInfraManager() {
+      alert('📞 [인프라팀 선로담당자 유선 연결]\n김선로 차장 (010-3456-7890) 번호로 즉시 비상 호(Call)를 발신합니다.');
+    }
+
+    function sendInfraAlertSms() {
+      showToast('✉️ [비상 SMS 전송] 인프라팀 선로담당자 및 운영팀에 긴급 출동 문자 발송 완료!', '✉️');
+    }
+
+    function openPartnerModal() {
+      const partner = prompt('추가 출동을 요청할 협력사를 입력하세요:\n(예: 케이티이엔지, 대성광통신, 영남정보통신)', '케이티이엔지 (외선3팀)');
+      if (partner) {
+        showToast(`👥 ${partner} 에 단선 B지점 긴급 지원출동 지시를 하달했습니다.`, '👥');
+      }
+    }
+
+    function toggleSop(el) {
+      if (el.checked) {
+        el.parentElement.classList.add('checked');
+      } else {
+        el.parentElement.classList.remove('checked');
+      }
+      updateSopSummary();
+    }
+
+    function updateSopSummary() {
+      const all = document.querySelectorAll('.sop-item input[type="checkbox"]');
+      const checked = document.querySelectorAll('.sop-item input[type="checkbox"]:checked');
+      document.getElementById('sop-progress-summary').innerText = `${checked.length} / ${all.length} 완료`;
+    }
+
+    function showToast(msg, icon = '🔔') {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').innerText = msg;
+      document.getElementById('toast-icon').innerText = icon;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3200);
+    }
+  </script>
+</body>
+</html>
